@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Institutional Organization Visualization</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --text-color: #e2e8f0;
+            --link-color: #475569;
+            --node-circle: #3b82f6;
+            --node-collapsed: #f59e0b;
+            --node-leaf: #10b981;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+        }
+
+        #chart-container {
+            width: 100%;
+            height: 100%;
+            cursor: grab;
+        }
+
+        #chart-container:active {
+            cursor: grabbing;
+        }
+
+        .link {
+            fill: none;
+            stroke: var(--link-color);
+            stroke-width: 1.5px;
+            stroke-opacity: 0.6;
+        }
+
+        .node-circle {
+            cursor: pointer;
+            stroke-width: 2px;
+            transition: all 0.2s ease;
+        }
+
+        .node-circle:hover {
+            filter: brightness(1.5);
+        }
+
+        .node-text {
+            font-size: 10px;
+            font-weight: 500;
+            pointer-events: none;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+        }
+
+        .tooltip {
+            position: absolute;
+            text-align: left;
+            padding: 8px 12px;
+            font-size: 12px;
+            background: #1e293b;
+            color: #fff;
+            border: 1px solid #334155;
+            border-radius: 4px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 100;
+            max-width: 300px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .legend {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid #334155;
+            padding: 15px;
+            border-radius: 8px;
+            backdrop-filter: blur(5px);
+            z-index: 10;
+        }
+        .legend h3 { margin: 0 0 10px 0; font-size: 14px; color: #94a3b8; }
+        .legend-item { display: flex; align-items: center; margin-bottom: 5px; font-size: 12px; }
+        .legend-color { width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; }
+    </style>
+</head>
+<body>
+
+    <div class="legend">
+        <h3>INSTITUTION STRUCTURE</h3>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: var(--node-collapsed); border: 2px solid #fff;"></div>
+            <span>Collapsed Branch (Click to expand)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: var(--node-circle);"></div>
+            <span>Expanded Branch</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: var(--node-leaf);"></div>
+            <span>End Node (File/Item)</span>
+        </div>
+    </div>
+
+    <div id="chart-container"></div>
+    <div id="tooltip" class="tooltip"></div>
+
+<script>
+    // --- 1. Data Definition ---
+    const rawTreeText = `├── Consejo Autonomo
+│   ├── Academia Dominicana.md
+│   ├── Consejo Menor Defensor.md
+│   ├── Consejo Menor Electroral.md
+│   ├── Consejo Menor Heraldico.md
+│   ├── Consejo Menor Honorario.md
+│   └── README.md
+├── Consejo Legislador
+│   └── Consejo Lesgilador.md
+├── Consejo Regional
+│   └── Consejo Regional.md
+├── Consejo Regulador
+│   ├── Agencia Mayor Monetaria.md
+│   ├── Consejo Menor de Regulación de Artes y Oficios.md
+│   ├── Consejo Regulador.md
+│   └── Cosejo Menor Monetario.md
+├── Consejo Servidor
+│   └── Consejo Servidor.md
+├── Consejo Tecnocientifico
+│   ├── Ars Defendi.md
+│   ├── Ars Gubernandi
+│   │   ├── Colegio Menor de Arqueologia.md
+│   │   ├── Colegio Menor de Ciencias Politicas.md
+│   │   ├── Colegio Menor de Economia.md
+│   │   ├── Colegio Menor de Historia.md
+│   │   ├── Colegio Menor de Leyes.md
+│   │   ├── Colegio Menor de Linguistica.md
+│   │   ├── Colegio Menor en Ciencias Cognitivas.md
+│   │   ├── Colegio Menor en Ciencias Matemáticas.md
+│   │   ├── Colegio Menor en Ciencias Psicologicas.md
+│   │   ├── Colegio Menor en Sistemas Inteligentes.md
+│   │   ├── Laboratorio Mayor Ars Negociandi.md
+│   │   ├── Laboratorio Mayor de Sistemas Sociales
+│   │   │   ├── Laboratorio Menor de Ciencias Cognitivas.md
+│   │   │   ├── Laboratorio Menor de Ciencias Políticas.md
+│   │   │   ├── Laboratorio Menor de Economía.md
+│   │   │   ├── Laboratorio Menor de Historia.md
+│   │   │   └── Laboratorio Menor de Justicia.md
+│   │   ├── Laboratorio Mayor de Sistemas Sociales.md
+│   │   └── Observatorio.md
+│   ├── Ars Gubernandi.md
+│   ├── Ars Medicinae.md
+│   ├── Ars Scientia
+│   │   ├── Alumni.md
+│   │   ├── Collegium
+│   │   │   ├── Colegio Mayor Ars Complexus.md
+│   │   │   ├── Colegio Mayor Ars Computandi.md
+│   │   │   ├── Colegio Mayor Ars Mathematica.md
+│   │   │   ├── Colegio Mayor Ars Stadistica.md
+│   │   │   ├── Colegio Mayor de Bioingenieros.md
+│   │   │   ├── Colegio Mayor de Ciencias de la Tierra.md
+│   │   │   ├── Colegio Mayor de Ciencias de la Vida.md
+│   │   │   ├── Colegio Mayor de Ciencias Espaciales.md
+│   │   │   ├── Colegio Mayor de Ciencias Fisicas.md
+│   │   │   ├── Colegio Mayor de Ciencias Navales.md
+│   │   │   ├── Colegio Mayor de Ciencias Nucleares.md
+│   │   │   ├── Colegio Mayor de Ciencias Químicas.md
+│   │   │   ├── Colegio Mayor de Filosofia.md
+│   │   │   ├── Colegio Mayor de Ingenieros Civiles.md
+│   │   │   ├── Colegio Mayor de Lógica.md
+│   │   │   ├── Colegio Mayor de Microingenieira.md
+│   │   │   ├── Colegio Mayor de Mineria.md
+│   │   │   ├── Colegio Mayor de Robotica.md
+│   │   │   └── Colegio Mayor de Sistemas Inteligentes.md
+│   │   ├── Collegium.md
+│   │   ├── eLearning.md
+│   │   ├── Habitación.md
+│   │   ├── Inversio.md
+│   │   ├── Laboratorio
+│   │   │   ├── Laboratorio Mayor Ars Computandi.md
+│   │   │   ├── Laboratorio Mayor Ars Mechanicum
+│   │   │   ├── Laboratorio Mayor Ars Mechanicum.md
+│   │   │   ├── Laboratorio Mayor de Biologia.md
+│   │   │   ├── Laboratorio Mayor de Espacio.md
+│   │   │   ├── Laboratorio Mayor de Estudios Cientificos Avanzado.md
+│   │   │   ├── Laboratorio Mayor de Física.md
+│   │   │   ├── Laboratorio Mayor de Matematicas.md
+│   │   │   ├── Laboratorio Mayor de Química.md
+│   │   │   ├── Laboratorio Mayor de Tecnologias Avanzadas.md
+│   │   │   └── Laboratorio Mayor Politicas Tecnocientíficas.md
+│   │   ├── Laboratorio.md
+│   │   ├── Libreria.md
+│   │   ├── Observatorio
+│   │   │   ├── Commercialization Model.md
+│   │   │   ├── Founding Models.md
+│   │   │   ├── Impact Model.md
+│   │   │   └── Inner Economy.md
+│   │   ├── Observatorio.md
+│   │   ├── Operarius
+│   │   │   └── Fab Labs.md
+│   │   ├── Operarius.md
+│   │   ├── Patronato.md
+│   │   ├── Solutio
+│   │   │   └── Mercadología.md
+│   │   └── Solutio.md
+│   ├── Ars Scientia.md
+│   ├── Ars Tecnica.md
+│   ├── Bioderia
+│   │   ├── Animal Lab.md
+│   │   ├── Beverage Lab.md
+│   │   ├── Bioderia.md
+│   │   ├── Culinary Lab.md
+│   │   ├── Diary Lab.md
+│   │   ├── Honey Lab.md
+│   │   ├── Laboratorio Mayor de Tecnología de los Alimentos.md
+│   │   ├── Microbiology Lab.md
+│   │   ├── Nutrition Lab.md
+│   │   ├── Process Lab.md
+│   │   ├── Quality Lab.md
+│   │   ├── RD Forest Lab.md
+│   │   ├── Seafood Lab.md
+│   │   ├── Systems Lab.md
+│   │   └── Wine Lab.md
+│   ├── Biosaluderia.md
+│   ├── Cienceria
+│   │   ├── Cienceria.md
+│   │   ├── Laboratorio Mayor de Astrofísica.md
+│   │   ├── Laboratorio Mayor de Biofísica.md
+│   │   ├── Laboratorio Mayor de Biologia.md
+│   │   ├── Laboratorio Mayor de Biosistemas.md
+│   │   ├── Laboratorio Mayor de Biotecnología.md
+│   │   ├── Laboratorio Mayor de Ciencias Cognitivas.md
+│   │   ├── Laboratorio Mayor de Ciencias de la Tierra.md
+│   │   ├── Laboratorio Mayor de Ciencias de Materiales.md
+│   │   ├── Laboratorio Mayor de Ciencias Nucleares.md
+│   │   ├── Laboratorio Mayor de Ciencias Teoricas.md
+│   │   ├── Laboratorio Mayor de Computacion.md
+│   │   ├── Laboratorio Mayor de Construcciones.md
+│   │   ├── Laboratorio Mayor de Electrónica.md
+│   │   ├── Laboratorio Mayor de Energía.md
+│   │   ├── Laboratorio Mayor de Estudios Avanzados.md
+│   │   ├── Laboratorio Mayor de Física Aplicada.md
+│   │   ├── Laboratorio Mayor de Geociencias.md
+│   │   ├── Laboratorio Mayor de Geografia.md
+│   │   ├── Laboratorio Mayor de Geologia.md
+│   │   ├── Laboratorio Mayor de Hidrología e Hidrotecnica.md
+│   │   ├── Laboratorio Mayor de Instrumentos Científicos.md
+│   │   ├── Laboratorio Mayor de Lógica.md
+│   │   ├── Laboratorio Mayor de Matemáticas.md
+│   │   ├── Laboratorio Mayor de Mecánica.md
+│   │   ├── Laboratorio Mayor de Microbiología.md
+│   │   ├── Laboratorio Mayor de Movilidad.md
+│   │   ├── Laboratorio Mayor de Nanociencias.md
+│   │   ├── Laboratorio Mayor de Neurociencias.md
+│   │   ├── Laboratorio Mayor de Proyectos Estrategicos.md
+│   │   ├── Laboratorio Mayor de Química.md
+│   │   ├── Laboratorio Mayor de Riesgos Nacionales.md
+│   │   ├── Laboratorio Mayor de Robótica.md
+│   │   ├── Laboratorio Mayor de Sensores.md
+│   │   ├── Laboratorio Mayor de Sistemas Autónomos.md
+│   │   ├── Laboratorio Mayor de Sistemas Complejos.md
+│   │   ├── Laboratorio Mayor de Sistemas Inteligentes.md
+│   │   ├── Laboratorio Mayor de Sistemas Terrestres.md
+│   │   ├── Laboratorio Mayor de Veterinaria.md
+│   │   ├── Laboratorio Mayor en Biología del Desarrollo.md
+│   │   ├── Laboratorio Mayor en Biología.md
+│   │   ├── Laboratorio Mayor en Biomateriales.md
+│   │   ├── Laboratorio Mayor en Bioquímica.md
+│   │   ├── Laboratorio Mayor en Ciencias Aeroespaciales.md
+│   │   ├── Laboratorio Mayor en Ciencias Agronómicas.md
+│   │   ├── Laboratorio Mayor en Ciencias Computacionales.md
+│   │   ├── Laboratorio Mayor en Ciencias de Alimentos.md
+│   │   ├── Laboratorio Mayor en Ciencias de la Computación.md
+│   │   ├── Laboratorio Mayor en Ciencias de Materiales.md
+│   │   ├── Laboratorio Mayor en Ciencias Formales.md
+│   │   ├── Laboratorio Mayor en Ciencias Neurológicas.md
+│   │   ├── Laboratorio Mayor en Ciencias Planetarias.md
+│   │   ├── Laboratorio Mayor en Ciencias Teóricas.md
+│   │   ├── Laboratorio Mayor en Computación Cuántica.md
+│   │   ├── Laboratorio Mayor en Ecología Química.md
+│   │   ├── Laboratorio Mayor en Física.md
+│   │   └── Laboratorio Mayor en Óptica.md
+│   ├── Colegio Mayor de Ciencias Educativas.md
+│   ├── Computaderia
+│   │   ├── Applied Mathematics Lab.md
+│   │   ├── Artificial Intelligence (AI) Lab.md
+│   │   ├── Augmented Reality (AR) Lab.md
+│   │   ├── Automated Reasoning Labs.md
+│   │   ├── Autonomous Systems Labs.md
+│   │   ├── Cloud Computing Labs.md
+│   │   ├── Complex Systems Modeling Labs.md
+│   │   ├── Computaderia.md
+│   │   ├── Computational Mathematics Labs.md
+│   │   ├── Computational Methods Labs.md
+│   │   ├── Computation Sciences Science Science Lab.md
+│   │   ├── Computer Architecture Lab.md
+│   │   ├── Computer Graphics Lab.md
+│   │   ├── Computer Lab.md
+│   │   ├── Computer Vision Labs.md
+│   │   ├── Cryptography Lab.md
+│   │   ├── Data Systems Lab.md
+│   │   ├── Digital Education Systems Lab.md
+│   │   ├── Digital Health Systems Lab.md
+│   │   ├── Distributed Systems Labs.md
+│   │   ├── Formal Methods Labs.md
+│   │   ├── Game Development Labs.md
+│   │   ├── High Performace Computing Lab.md
+│   │   ├── Human-Computer Interaction (HCI) Lab.md
+│   │   ├── Human-Computer Interaction Lab.md
+│   │   ├── Intelligent Systems Lab.md
+│   │   ├── Laboratorio Mayor de Proyectos Avanzados.md
+│   │   ├── Mathematics Labs.md
+│   │   ├── Multimedia Lab.md
+│   │   ├── Natural Language Processing Lab.md
+│   │   ├── Networking Lab Lab.md
+│   │   ├── Networking Lab.md
+│   │   ├── Operations Research Labs.md
+│   │   ├── Programming Systems Lab.md
+│   │   ├── Quantum Computing Lab.md
+│   │   ├── Robotics Lab.md
+│   │   ├── Security Lab.md
+│   │   ├── Software Systems Lab.md
+│   │   ├── Theoretical Computer Science Labs.md
+│   │   ├── Theoretical Machine Learning Lab.md
+│   │   └── Virtual Reality (VR) Lab.md
+│   ├── Consejo Menor de Estrategia de Largo Plazo.md
+│   ├── Consejo Menor Estratega.md
+│   ├── Defenseria
+│   │   ├── Aerosystems Lab.md
+│   │   ├── Ballistics.md
+│   │   ├── Biology Lab.md
+│   │   ├── Chemical Lab.md
+│   │   ├── Computation Sciences.md
+│   │   ├── Cybersecurity.md
+│   │   ├── Defenseria.md
+│   │   ├── Electronic Warfare.md
+│   │   ├── Energy.md
+│   │   ├── Human Performace.md
+│   │   ├── Intelligence, Surveillance, and Reconnaissance (IS).md
+│   │   ├── Intelligent Systems.md
+│   │   ├── Materials Science.md
+│   │   ├── Nanoscienes Lab.md
+│   │   ├── Optical Sciences.md
+│   │   ├── Physics.md
+│   │   ├── Proyectos Estrategios.md
+│   │   ├── Quantum Research.md
+│   │   ├── Robotics Systems.md
+│   │   ├── Satellite Systems Lab.md
+│   │   ├── Space Sciences.md
+│   │   ├── Space Technology.md
+│   │   ├── Unmanned Aerial Vehicles (UAVs).md
+│   │   └── Weapons Systems.md
+│   ├── Energeria
+│   │   ├── Energeria.md
+│   │   ├── Laboratorio Mayor de Almacenamiento de Energía.md
+│   │   ├── Laboratorio Mayor de Bioenergía.md
+│   │   ├── Laboratorio Mayor de Ciencia de Materiales.md
+│   │   ├── Laboratorio Mayor de Ciencias Computacionales.md
+│   │   ├── Laboratorio Mayor de Conversión de Energía.md
+│   │   ├── Laboratorio Mayor de Eficiencia Energética.md
+│   │   ├── Laboratorio Mayor de Electroquímica.md
+│   │   ├── Laboratorio Mayor de Energía Nuclear.md
+│   │   ├── Laboratorio Mayor de Energía Renovable.md
+│   │   ├── Laboratorio Mayor de Energía Térmica.md
+│   │   ├── Laboratorio Mayor de Manufactura Avanzada.md
+│   │   ├── Laboratorio Mayor de Política y Economía.md
+│   │   └── Laboratorio Mayor de Redes Inteligentes.md
+│   ├── Espacieria
+│   │   ├── Aerodynamics Lab.md
+│   │   ├── Aerospace Systems.md
+│   │   ├── Aerospace Vehicles Lab.md
+│   │   ├── Avionics Lab.md
+│   │   ├── Bioastronautics Lab.md
+│   │   ├── Communication Systems Lab.md
+│   │   ├── Computational Sciences Lab.md
+│   │   ├── Espacieria.md
+│   │   ├── Human Factors Lab.md
+│   │   ├── In-Space Manufacturing Lab.md
+│   │   ├── Intelligent Systems Lab.md
+│   │   ├── Launch Systems Lab.md
+│   │   ├── Materials Science Lab.md
+│   │   ├── Mathematical Lab.md
+│   │   ├── Propulsion Lab.md
+│   │   ├── Robotics Lab.md
+│   │   ├── Satellite Systems Lab.md
+│   │   ├── Spacecraft Lab.md
+│   │   ├── Spacecraft Power Systems Lab.md
+│   │   ├── Space Navigation Lab.md
+│   │   ├── Space Physics Lab.md
+│   │   ├── Space Systems Lab.md
+│   │   ├── Structures Lab.md
+│   │   ├── Thermal Control Lab.md
+│   │   └── Turbomachinery Lab.md
+│   ├── Gubernandi
+│   │   ├── Gubernandi.md
+│   │   ├── Laboratorio de Competitividad Nacional.md
+│   │   ├── Laboratorio Mayor de Administración Pública y Pe.md
+│   │   ├── Laboratorio Mayor de Análisis Fiscal.md
+│   │   ├── Laboratorio Mayor de Asuntos Financieros.md
+│   │   ├── Laboratorio Mayor de Comercio Exterior.md
+│   │   ├── Laboratorio Mayor de Digitalización Estatal.md
+│   │   ├── Laboratorio Mayor de Estrategia Económica
+│   │   │   ├── Laboratorio Mayor de Mercados Financieros.md
+│   │   │   ├── Laboratorio Mayor de Politicas Economicas.md
+│   │   │   └── Laboratorio Mayor Políticas Desarrollo Empresaria.md
+│   │   ├── Laboratorio Mayor de Estrategia Económica.md
+│   │   ├── Laboratorio Mayor de Metapolíticas.md
+│   │   ├── Laboratorio Mayor de Politica Exterior.md
+│   │   ├── Laboratorio Mayor de Politicas de Capacidades Huma.md
+│   │   ├── Laboratorio Mayor de Politicas de Infraestructura.md
+│   │   ├── Laboratorio Mayor de Politicas de Salud.md
+│   │   ├── Laboratorio Mayor de Politicas de Seguridad.md
+│   │   ├── Laboratorio Mayor de Politicas Energeticas.md
+│   │   ├── Laboratorio Mayor de Politicas Sociales.md
+│   │   ├── Laboratorio Mayor Estrategia Educativa.md
+│   │   └── Laboratorio Menor de Politicas Urbanisticas.md
+│   ├── Hospital Mayor de Investigación y Medicina Avanza.md
+│   ├── Hospital Mayor de Investigación y Tratamiento de .md
+│   ├── Intertecnognoseria
+│   │   └── README.md
+│   ├── Laboratorio Mayor de Estrategia Nacional.md
+│   ├── Laboratorio Mayor de Mejoras.md
+│   ├── Laboratorio Mayor de Politicas Tecnocientíficas.md
+│   ├── Laboratorio Mayor de Proyectos Avanzados.md
+│   ├── Laboratorio Mayor de Proyectos Médicos Avanzados.md
+│   ├── Materia
+│   │   ├── Construction Materials Lab.md
+│   │   ├── Economic Geology.md
+│   │   ├── Environmental Engineering Lab.md
+│   │   ├── Extractive Metallurgy Lab.md
+│   │   ├── Fire Safety Engineering Lab.md
+│   │   ├── Geochemistry Lab.md
+│   │   ├── Geotechnical Engineering Lab.md
+│   │   ├── Hydraulic Engineering Lab.md
+│   │   ├── Laboratorio Mayor de Biomateriales.md
+│   │   ├── Laboratorio Mayor de Ciencias de Materiales.md
+│   │   ├── Laboratorio Mayor de Climatización.md
+│   │   ├── Laboratorio Mayor de Infraestructura
+│   │   │   ├── Laboratorio Menor de Urbanismo.md
+│   │   │   └── Laboratorio Menor Manejo de Desechos.md
+│   │   ├── Laboratorio Mayor de Infraestructura.md
+│   │   ├── Laboratorio Mayor de Metalurgia.md
+│   │   ├── Laboratorio Mayor de Mineralogía Aplicada.md
+│   │   ├── Materia.md
+│   │   ├── Mathematics Lab.md
+│   │   ├── Mine Lab.md
+│   │   ├── Mineral Chemistry Lab.md
+│   │   ├── Mineral Economics and Policy Lab.md
+│   │   ├── Mineral Physics Lab.md
+│   │   ├── Mineral Processing Lab.md
+│   │   ├── Modeling Lab.md
+│   │   ├── Physics Lab.md
+│   │   ├── Seismic Engineering Lab.md
+│   │   ├── Simulation Lab.md
+│   │   ├── Smart Infrastructure Lab.md
+│   │   ├── Structural Engineering Lab.md
+│   │   ├── Structural Health Monitoring Lab.md
+│   │   ├── Transportation Engineering Lab.md
+│   │   ├── Urban and Environmental Planning Lab.md
+│   │   └── Waste Management Lab.md
+│   ├── Metrologia
+│   │   ├── Laboratorio Mayor Ars Instrumentandi.md
+│   │   └── Laboratorio Mayor Ars Mesura.md
+│   ├── Metrologia.md
+│   ├── Produceria
+│   │   ├── Laboratorio Mayor de Cadena de Suministros.md
+│   │   ├── Laboratorio Mayor de Estrategia y Competitividad E.md
+│   │   ├── Laboratorio Mayor de la Economía de Servicios.md
+│   │   ├── Laboratorio Mayor de Logistica.md
+│   │   ├── Laboratorio Mayor del Tejido Productivo.md
+│   │   ├── Laboratorio Mayor de Mejoras y Nuevas Fuentes de C.md
+│   │   ├── Laboratorio Mayor de Politicas de Productivas.md
+│   │   ├── Laboratorio Mayor de Tecnologías Emergentes.md
+│   │   └── Produceria.md
+│   ├── README.md
+│   ├── Saluderia
+│   │   ├── Ageing Lab.md
+│   │   ├── Analytical Chemistry Lab.md
+│   │   ├── Bacteriology Lab.md
+│   │   ├── Biochemistry Lab.md
+│   │   ├── Bioinformatics Labs.md
+│   │   ├── Biomedical Engineering Labs.md
+│   │   ├── Biomedical Lab.md
+│   │   ├── Biophysics Lab.md
+│   │   ├── Cancer Biology Lab.md
+│   │   ├── Cardiovascular Biology Lab.md
+│   │   ├── Cellular Pharmacology Lab.md
+│   │   ├── Developmental Biology Lab.md
+│   │   ├── Endocrinology Lab.md
+│   │   ├── Epidemiology Lab.md
+│   │   ├── Gegenerative Medicine Lab.md
+│   │   ├── Genomics Labs.md
+│   │   ├── Human Genetics Lab.md
+│   │   ├── Immunology Lab.md
+│   │   ├── Infectious Diseases Lab.md
+│   │   ├── Inflammation Lab.md
+│   │   ├── Integrative Neuroscience Lab.md
+│   │   ├── Laboratorio Mayor de Biología Molecular.md
+│   │   ├── Laboratorio Mayor de Ciencias del Deporte.md
+│   │   ├── Laboratorio Mayor de Cosmetología.md
+│   │   ├── Laboratorio Mayor de Imagenes Médicas.md
+│   │   ├── Laboratorio Mayor de Medicina.md
+│   │   ├── Laboratorio Mayor de Neurotecnología.md
+│   │   ├── Laboratorio Mayor de Tecnologia Deportiva.md
+│   │   ├── Laboratorio Mayor Salud Animal.md
+│   │   ├── Medical Mycology Lab.md
+│   │   ├── Medicinal Chemistry Lab.md
+│   │   ├── Microscopy Lab.md
+│   │   ├── Myology Lab.md
+│   │   ├── Nanotechnology Lab.md
+│   │   ├── Neurodevelopmental Disorders Lab.md
+│   │   ├── Neuroscience Labs.md
+│   │   ├── Pharmacodynamics Lab.md
+│   │   ├── Pharmacokinetics Lab.md
+│   │   ├── Pharmacology Lab.md
+│   │   ├── Precision Medicine Lab.md
+│   │   ├── Proteomics Lab.md
+│   │   ├── Public Health Lab.md
+│   │   ├── Reproductive Health Lab.md
+│   │   ├── Saluderia.md
+│   │   ├── Structural Biology Lab.md
+│   │   ├── Systems Biology Lab.md
+│   │   ├── Toxicology Lab.md
+│   │   └── Vision Lab.md
+│   ├── Saludtecnería
+│   │   └── Laboratorio Mayor Tecnología Médica Avanzada.md
+│   ├── Saludtecnería.md
+│   ├── Servideria
+│   │   ├── Consulting Lab.md
+│   │   ├── Culinary Lab.md
+│   │   ├── Finance Lab.md
+│   │   ├── Human Sciences Lab.md
+│   │   ├── Legal Services Lab.md
+│   │   ├── Logistic Lab.md
+│   │   ├── Management Lab.md
+│   │   ├── Marketing Lab.md
+│   │   ├── Market Lab.md
+│   │   └── Tourism Lab.md
+│   ├── Socieria
+│   │   ├── Archaeology Lab.md
+│   │   ├── Behavioral Studies Lab.md
+│   │   ├── Cognitive Science Lab.md
+│   │   ├── Computational Science Lab.md
+│   │   ├── Computational Social Science Lab.md
+│   │   ├── Conflict Studies Institute.md
+│   │   ├── Corruption Lab.md
+│   │   ├── Criminology Lab.md
+│   │   ├── Demographic Lab.md
+│   │   ├── Development Studies Lab.md
+│   │   ├── Digital Humanities Lab.md
+│   │   ├── Economic Intelligence Lab.md
+│   │   ├── Economic Lab.md
+│   │   ├── Education and Learning Research Lab.md
+│   │   ├── Ethics Lab.md
+│   │   ├── Global Risk Lab.md
+│   │   ├── Global Trade Lab.md
+│   │   ├── History Lab.md
+│   │   ├── Law lab.md
+│   │   ├── Linguistics Lab.md
+│   │   ├── Literary Lab.md
+│   │   ├── Mathematics Lab.md
+│   │   ├── Physicology Lab.md
+│   │   ├── Political Science Lab.md
+│   │   ├── Simulation Lab.md
+│   │   ├── Social Policy Lab.md
+│   │   ├── Socieria.md
+│   │   ├── Sociology Lab.md
+│   │   ├── Statecraft Lab.md
+│   │   ├── Statistics Lab.md
+│   │   ├── Technology & Socienty Lab.md
+│   │   └── Theology Lab.md
+│   ├── Tecnoderia
+│   │   ├── Laboratorio Mayor de Avionica.md
+│   │   ├── Laboratorio Mayor de Biologia Aplicada.md
+│   │   ├── Laboratorio Mayor de Electromecanica.md
+│   │   ├── Laboratorio Mayor de Electronica.md
+│   │   ├── Laboratorio Mayor de Electronica y Mecanica.md
+│   │   ├── Laboratorio Mayor de Fabricacion.md
+│   │   ├── Laboratorio Mayor de Fisica Aplicada.md
+│   │   ├── Laboratorio Mayor de Maquinas Herramientas.md
+│   │   ├── Laboratorio Mayor de Máquinas.md
+│   │   ├── Laboratorio Mayor de Mecánica.md
+│   │   ├── Laboratorio Mayor de Microsistemas.md
+│   │   ├── Laboratorio Mayor de Proyectos Avanzados.md
+│   │   ├── Laboratorio Mayor de Quimica Aplicada.md
+│   │   ├── Laboratorio Mayor de Robótica.md
+│   │   ├── Laboratorio Mayor de Sistemas Ciber-Fisicos.md
+│   │   ├── Laboratorio Mayor de Sistemas Inteligentes.md
+│   │   ├── Laboratorio Mayor de Telecomunicaciones.md
+│   │   ├── Laboratorio Mayor de Textiles.md
+│   │   └── Tecnoderia.md
+│   ├── Transporteria
+│   │   ├── Advanced Proyects Lab.md
+│   │   ├── Aerospace Systems Lab.md
+│   │   ├── Environmental Impact Lab.md
+│   │   ├── Highway Safety Lab.md
+│   │   ├── Human Factors and Ergonomics Lab.md
+│   │   ├── Laboratorio Mayor de Transportacion.md
+│   │   ├── Laboratorio Menor de Automobilidad.md
+│   │   ├── Logistics and Supply Chain Lab.md
+│   │   ├── Mathematics Lab.md
+│   │   ├── Pavement Engineering Lab.md
+│   │   ├── Physics Lab.md
+│   │   ├── Public Transportation Lab.md
+│   │   ├── Railway Engineering Lab.md
+│   │   ├── README.md
+│   │   ├── Simulation Lab.md
+│   │   ├── Smart Transportation Systems Lab.md
+│   │   ├── Traffic Engineering Lab.md
+│   │   ├── Transportation Planning Lab.md
+│   │   └── Vehicle Dynamics Lab.md
+│   ├── Urbaneria
+│   │   ├── Laboratorio Mayor de Tecnología Ambiente.md
+│   │   └── README.md
+│   └── Urbaneria.md
+├── Consilium Exsecutivum
+│   ├── Consejo Ejecutivo.md
+│   ├── Consejo Mayor de Asuntos Economicos
+│   │   ├── Agencia Mayor de Desarrollo Empresarial.md
+│   │   ├── Agencia Mayor de Ecosistemas Productivos
+│   │   │   ├── Clúster Complementario Tecnoindustrial.md
+│   │   │   ├── Clúster Estratégico Robotico.md
+│   │   │   ├── Clúster Estratégico Sistemas Computaciones y Int.md
+│   │   │   ├── Clúster Estratégico Soluciones en Investigación
+│   │   │   ├── Clúster Estratégico Soluciones en Investigación.md
+│   │   │   ├── Clúster Estrategico Tecnoalimentario.md
+│   │   │   ├── Clúster Estrategico Tecnoenergia.md
+│   │   │   ├── Clúster Estrategico Tecnofabricacion.md
+│   │   │   ├── Clúster Estratégico Tecnofisico.md
+│   │   │   ├── Clúster Estrategico Tecnología de Defensa, Espacio.md
+│   │   │   ├── Clúster Estrategico Tecnoquimico.md
+│   │   │   ├── Clúster Estretegico Tecnobiologico.md
+│   │   │   ├── Clúster Estretegico Tecnomateriales.md
+│   │   │   ├── Clúster Estretegico Tecnosalud.md
+│   │   │   ├── Clúster Mayor de Refrigeración y Climatización.md
+│   │   │   ├── Cluster Mayor de Servicos Profersionales.md
+│   │   │   ├── Clúster Mayor de Tecnologia Logística y de Trans.md
+│   │   │   ├── Cluster Mayor de Tecnología, Madera y Soluciones .md
+│   │   │   ├── Clúster Mayor Tecnologias Educativas.md
+│   │   │   ├── Clúster Mayor Tecnologias Textiles.md
+│   │   │   ├── Clúster Mayor Tecnologias y Servicios Audiovisual.md
+│   │   │   ├── Clúster Mayor Tecnologicode Construcción Avanzado.md
+│   │   │   ├── Clúster Mayor Tecnologico en Gestión de Residual.md
+│   │   │   ├── Clúster Mayor Tenolocias Financieras.md
+│   │   │   ├── Clúster Mayor Turistico y Hospitalidad.md
+│   │   │   └── Cluster.md
+│   │   ├── Agencia Mayor de Ecosistemas Productivos.md
+│   │   ├── Agencia Mayor de Estadores de Heraldica y Onomást.md
+│   │   ├── Agencia Mayor de Inversiones Estratégicas
+│   │   │   ├── Banca Finis.md
+│   │   │   ├── Banca Investiga.md
+│   │   │   ├── Banca Kinesis.md
+│   │   │   ├── Banca Primoris.md
+│   │   │   ├── Grupo Empresarial Común Dominicano
+│   │   │   ├── Grupo Empresarial Común Dominicano.md
+│   │   │   ├── Grupo Empresarial Tecnoestrategico Dominicano
+│   │   │   ├── Grupo Empresarial Tecnoestrategico Dominicano.md
+│   │   │   ├── Grupo Inovara.md
+│   │   │   └── IE Banca.md
+│   │   ├── Agencia Mayor de Inversiones Estratégicas.md
+│   │   ├── Agencia Mayor de Maestranza Tecnoproductiva.md
+│   │   ├── Consejo Menor de Coordinacion de Desarrollo Producto.md
+│   │   ├── Consejo Menor de Exportaciones.md
+│   │   ├── Consejo Menor de Hacienda.md
+│   │   ├── Consejo Menor de Inversiones Estrategicas.md
+│   │   ├── Consejo Menor de Labor.md
+│   │   └── README.md
+│   ├── Consejo Mayor de Asuntos Educativos
+│   │   ├── Consejo Menor Academia Preparatoria.md
+│   │   ├── Consejo Menor de Artes Tecnicas
+│   │   │   └── README.md
+│   │   ├── Consejo Menor Seminario Humanistico y Social
+│   │   │   └── README.md
+│   │   ├── Consejo Menor Seminario Tecnocientífico
+│   │   │   ├── README.md
+│   │   │   ├── Semanario Menor en Ciencias Agronomicas.md
+│   │   │   ├── Seminario en Ciencias Áplicadas.md
+│   │   │   ├── Seminario Menor Ars Gubernandi.md
+│   │   │   ├── Seminario Menor de Artes.md
+│   │   │   ├── Seminario Menor de Ciencias Computacionales.md
+│   │   │   ├── Seminario Menor de Ciencias Energéticas.md
+│   │   │   ├── Seminario Menor de Ciencias Navales.md
+│   │   │   ├── Seminario Menor de Ciencias Sociales
+│   │   │   ├── Seminario Menor de Ciencias Sociales.md
+│   │   │   ├── Seminario Menor de Humanidades.md
+│   │   │   ├── Seminario Menor de Ingenieria de Control.md
+│   │   │   ├── Seminario Menor de Ingenieros Estructurales.md
+│   │   │   ├── Seminario Menor de Medicina
+│   │   │   ├── Seminario Menor de Medicina.md
+│   │   │   ├── Seminario Menor de Negocios.md
+│   │   │   ├── Seminario Menor de Neurosciences.md
+│   │   │   ├── Seminario Menor de Robótica.md
+│   │   │   ├── Seminario Menor en Ciencias Aeroespaciales.md
+│   │   │   ├── Seminario Menor en Ciencias de la Vida
+│   │   │   ├── Seminario Menor en Ciencias de la Vida.md
+│   │   │   ├── Seminario Menor en Ciencias de Materiales.md
+│   │   │   ├── Seminario Menor en Ciencias Físicas
+│   │   │   ├── Seminario Menor en Ciencias Físicas.md
+│   │   │   ├── Seminario Menor en Filosofia y Lógica.md
+│   │   │   ├── Seminario Menor en Historia.md
+│   │   │   ├── Seminario Menor Sistemas Complejos.md
+│   │   │   └── Seminario Menor Técnico e Industrial.md
+│   │   ├── Consejo Menor Studia Complementaria.md
+│   │   ├── Consejo Menor Studia Fundamentalia.md
+│   │   ├── Consejo Menor Studia Infantum.md
+│   │   └── README.md
+│   ├── Consejo Mayor de Asuntos Externos
+│   │   └── Consejo Mayor de Asuntos Externos.md
+│   ├── Consejo Mayor de Asuntos Generales
+│   │   ├── Consejo Mayor de Asuntos Generales.md
+│   │   ├── Consejo Menor de Registro de Propiedades.md
+│   │   └── Consejo Menor Maestrante.md
+│   ├── Consejo Mayor de Asuntos Sociales
+│   │   ├── Consejo Mayor de Asuntos Sociales.md
+│   │   ├── Consejo Menor de Asuntos Culturales.md
+│   │   ├── Consejo Menor de Asuntos Deportivos.md
+│   │   ├── Consejo Menor de Asuntos de Salud.md
+│   │   ├── Consejo Menor de Salud Humana.md
+│   │   ├── Consejo Menor de Seguridad Social.md
+│   │   └── Obra Pia Sanitaria.md
+│   ├── Consejo Mayor de Infraestructura
+│   │   ├── Consejo Mayor de Infraestructura.md
+│   │   ├── Consejo Menor de Energia.md
+│   │   ├── Consejo Menor de Infraestructura Digital.md
+│   │   ├── Consejo Menor de Logistica.md
+│   │   └── Consejo Menor de Transportacion.md
+│   ├── Consejo Mayor de Justicia
+│   │   └── Consejo Mayor de Justicia.md
+│   ├── Consejo Mayor de Seguridad
+│   │   ├── Consejo Mayor de Seguridad.md
+│   │   ├── Consejo Menor de Ciberseguridad.md
+│   │   ├── Consejo Menor de Inteligencia.md
+│   │   ├── Consejo Menor de Respuesta a Desastres.md
+│   │   ├── Consejo Menor de Seguridad Aerea.md
+│   │   ├── Consejo Menor de Seguridad del Espacio.md
+│   │   ├── Consejo Menor de Seguridad Fronterisa.md
+│   │   ├── Consejo Menor de Seguridad Interna.md
+│   │   ├── Consejo Menor de Seguridad Maritima.md
+│   │   ├── Consejo Menor de Seguridad Portuaria.md
+│   │   ├── Consejo Menor de Voluntarios.md
+│   │   └── Consejo Menor Penitenciario.md
+│   └── Consejo Mayor de Urbanismo
+│       ├── Consejo Mayor de Urbanismo.md
+│       ├── Consejo Menor de Espacios Públicos.md
+│       └── Consejo Menor de Viviendas.md
+├── Consilium Judicum
+│   └── Consejo Judicial.md
+├── Consilium Magnum
+│   └── Consilium Magnum.md
+├── Consilium Meta
+│   └── README.md
+├── Consilium Vigilantium
+│   ├── Consejo Menor Obervador.md
+│   └── Consejo Veedor.md`;
+
+    // --- 2. Data Parsing Logic ---
+    function parseTree(text) {
+        const lines = text.split('\n');
+        const root = { name: "República Dominicana", children: [] };
+        const levels = [root]; 
+
+        lines.forEach(line => {
+            if (!line.trim()) return;
+
+            let depth = 0;
+            let processedLine = line;
+            
+            while (processedLine.startsWith('│   ') || processedLine.startsWith('    ')) {
+                depth++;
+                processedLine = processedLine.substring(4);
+            }
+
+            if (processedLine.startsWith('├── ') || processedLine.startsWith('└── ')) {
+                let name = processedLine.substring(4).trim();
+                
+                if (name.endsWith('.md')) {
+                    name = name.slice(0, -3);
+                }
+
+                const node = { name: name, children: [] };
+                
+                const safeDepth = Math.min(depth, levels.length - 1);
+                
+                const parent = levels[safeDepth];
+                if (parent) {
+                    parent.children.push(node);
+                } else {
+                    root.children.push(node);
+                    levels.length = 1;
+                }
+
+                levels.length = safeDepth + 1;
+                levels.push(node);
+            }
+        });
+
+        return root;
+    }
+
+    const data = parseTree(rawTreeText);
+
+    // --- 3. Visualization Logic (D3.js) ---
+    
+    const container = document.getElementById('chart-container');
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+
+    const svg = d3.select('#chart-container').append('svg')
+        .attr('width', width)
+        .attr('height', height);
+
+    const g = svg.append('g');
+
+    const zoom = d3.zoom()
+        .scaleExtent([0.05, 3])
+        .on('zoom', (event) => {
+            g.attr('transform', event.transform);
+        });
+
+    svg.call(zoom);
+
+    // Use nodeSize for better vertical tree layout control
+    // [horizontal spacing, vertical spacing]
+    const treeLayout = d3.tree()
+        .nodeSize([180, 200]); 
+
+    const root = d3.hierarchy(data);
+    
+    // Collapse all initially
+    root.descendants().forEach((d) => {
+        if (d.depth > 0 && d.children) {
+            d._children = d.children;
+            d.children = null;
+        }
+    });
+
+    root.x0 = width / 2; // Initial horizontal position
+    root.y0 = 0;         // Initial vertical position
+
+    const linksGroup = g.append('g').attr('class', 'links');
+    const nodesGroup = g.append('g').attr('class', 'nodes');
+
+    update(root);
+
+    function update(source) {
+        const duration = 400;
+        
+        const treeData = treeLayout(root);
+        const nodes = treeData.descendants();
+        const links = treeData.links();
+
+        // --- Nodes ---
+        let i = 0;
+        const node = nodesGroup.selectAll('g.node')
+            .data(nodes, d => d.id || (d.id = ++i));
+
+        const nodeEnter = node.enter().append('g')
+            .attr('class', 'node')
+            .attr('transform', d => `translate(${source.x0},${source.y0})`)
+            .on('click', (event, d) => {
+                if (d.children) {
+                    d._children = d.children;
+                    d.children = null;
+                } else if (d._children) {
+                    d.children = d._children;
+                    d._children = null;
+                }
+                update(d);
+            });
+
+        nodeEnter.append('circle')
+            .attr('class', 'node-circle')
+            .attr('r', 6)
+            .style('fill', d => d._children ? '#f59e0b' : (d.children ? '#3b82f6' : '#10b981'))
+            .style('stroke', d => d._children ? '#fcd34d' : (d.children ? '#60a5fa' : '#34d399'));
+
+        // Text positioning for Top-Down
+        nodeEnter.append('text')
+            .attr('class', 'node-text')
+            .attr('dy', '1.5em') // Move text below the node
+            .attr('x', 0)        // Center text horizontally
+            .attr('text-anchor', 'middle') // Center anchor
+            .text(d => d.data.name);
+
+        nodeEnter.on('mouseover', function(event, d) {
+            const tooltip = d3.select('#tooltip');
+            let path = [];
+            let temp = d;
+            while(temp) {
+                path.push(temp.data.name);
+                temp = temp.parent;
+            }
+            tooltip.html(`<strong>${d.data.name}</strong><br><span style="font-size:10px;opacity:0.8">${path.reverse().join(' > ')}</span>`)
+                .style('left', (event.pageX + 15) + 'px')
+                .style('top', (event.pageY - 28) + 'px')
+                .style('opacity', 1);
+        })
+        .on('mouseout', function() {
+            d3.select('#tooltip').style('opacity', 0);
+        });
+
+        const nodeUpdate = nodeEnter.merge(node);
+
+        nodeUpdate.transition()
+            .duration(duration)
+            .attr('transform', d => `translate(${d.x},${d.y})`);
+
+        nodeUpdate.select('circle')
+            .style('fill', d => d._children ? '#f59e0b' : (d.children ? '#3b82f6' : '#10b981'))
+            .style('stroke', d => d._children ? '#fcd34d' : (d.children ? '#60a5fa' : '#34d399'));
+
+        const nodeExit = node.exit().transition()
+            .duration(duration)
+            .attr('transform', d => `translate(${source.x},${source.y})`)
+            .remove();
+
+        nodeExit.select('circle')
+            .attr('r', 0);
+
+        nodeExit.select('text')
+            .style('fill-opacity', 0);
+
+        // --- Links ---
+        const link = linksGroup.selectAll('path.link')
+            .data(links, d => d.target.id);
+
+        const linkEnter = link.enter().insert('path', 'g')
+            .attr('class', 'link')
+            .attr('d', d => {
+                const o = {x: source.x0, y: source.y0};
+                return diagonal(o, o);
+            });
+
+        const linkUpdate = linkEnter.merge(link);
+
+        linkUpdate.transition()
+            .duration(duration)
+            .attr('d', d => diagonal(d.source, d.target));
+
+        link.exit().transition()
+            .duration(duration)
+            .attr('d', d => {
+                const o = {x: source.x, y: source.y};
+                return diagonal(o, o);
+            })
+            .remove();
+
+        nodes.forEach(d => {
+            d.x0 = d.x;
+            d.y0 = d.y;
+        });
+    }
+
+    // Updated diagonal for vertical links
+    function diagonal(s, d) {
+        // s = source (parent), d = target (child)
+        return `M ${s.x} ${s.y}
+                C ${s.x} ${(s.y + d.y) / 2},
+                  ${d.x} ${(s.y + d.y) / 2},
+                  ${d.x} ${d.y}`;
+    }
+
+    // Center the tree on the root initially
+    // Since nodeSize is used, the root is at 0,0 in the tree coordinate system.
+    // We translate the main group (g) to the center top of the screen initially.
+    svg.call(zoom.transform, d3.zoomIdentity.translate(width / 2, 100).scale(1));
+
+</script>
+</body>
+</html>
