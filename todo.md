@@ -1,2 +1,2 @@
-- [ ]In State Design - Include a Supply Chain Risk Monitoring.
+- [ ] In State Design - Include a Supply Chain Risk Monitoring.
 - 
